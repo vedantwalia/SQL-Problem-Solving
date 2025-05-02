@@ -3,39 +3,44 @@
 -- for the test named item_test_2
 
 SELECT
-  view_binary.test_assignment,
-  COUNT(DISTINCT view_binary.item_id) AS num_views,
-  SUM(view_binary.view_bin_30d) AS sum_view_bin_30d,
-  AVG(view_binary.view_bin_30d) AS avg_view_bin_30d
-FROM
-  (
+    test_assignment,
+    COUNT(item_id) AS items,
+    SUM(view_binary_30d) AS viewed_items,
+    CAST(100*SUM(view_binary_30d)/COUNT(item_id) AS FLOAT) AS viewed_percent,
+    SUM(views) AS views,
+    SUM(views)/COUNT(item_id) AS average_views_per_item
+FROM (
     SELECT
-      assignments.item_id,
-      assignments.test_assignment,
-      MAX(
-        CASE
-          WHEN (
-            DATE(views.event_time) - DATE(assignments.test_start_date)
-          ) BETWEEN 1
-          AND 30 THEN 1
-          ELSE 0
-        END
-      ) AS view_bin_30d
+        f.test_assignment,
+        f.item_id,
+        MAX(CASE WHEN item_views.event_time > f.test_start_date THEN 1 ELSE 0 END) AS view_binary_30d,
+        COUNT(item_views.event_id) AS views
     FROM
-      dsv1069.final_assignments AS assignments
-      LEFT JOIN dsv1069.view_item_events AS views ON assignments.item_id = views.item_id
+        dsv1069.final_assignments f
+    LEFT OUTER JOIN (
+        SELECT
+            event_time,
+            event_id,
+            CAST(parameter_value AS INT) AS item_id
+        FROM
+            dsv1069.events
+        WHERE
+            event_name = 'view_item'
+            AND parameter_name = 'item_id'
+    ) item_views
+    ON f.item_id = item_views.item_id
+    AND item_views.event_time >= f.test_start_date
+    AND DATE_PART('day', item_views.event_time - f.test_start_date) <= 30
     WHERE
-      assignments.test_number = 'item_test_2'
+        f.test_number = 'item_test_2'
     GROUP BY
-      assignments.item_id,
-      assignments.test_assignment
-    ORDER BY
-      item_id
-  ) AS view_binary
+        f.test_assignment,
+        f.item_id
+) item_orders
 GROUP BY
-  view_binary.test_assignment
+    test_assignment;
   
---| test_assignment | num_views | sum_view_bin_30d | avg_view_bin_30d   |
---|------------------|------------|-------------------|---------------------|
---| 0                | 1130       | 915               | 0.8097345132743363  |
---| 1                | 1068       | 881               | 0.8249063670411985  |
+--| test_assignment | items | viewed_items | viewed_percent | views | average_views_per_item |
+--|-----------------|-------|--------------|----------------|--------|-------------------------|
+--| 0               | 1130  | 918          | 81             | 1916   | 1.70                    |
+--| 1               | 1068  | 890          | 83             | 1862   | 1.74                    |
